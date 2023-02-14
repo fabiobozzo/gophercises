@@ -4,8 +4,10 @@ import (
 	"encoding/csv"
 	"flag"
 	"fmt"
+	"math/rand"
 	"os"
 	"strings"
+	"time"
 )
 
 type problem struct {
@@ -16,7 +18,7 @@ type problem struct {
 func main() {
 	csvFilename := flag.String("csv", "problems.csv", "a csv file in the format of 'question, answer'")
 	timeLimit := flag.Int("limit", 30, "the time limit for the quiz in seconds")
-
+	shuffle := flag.Bool("shuffle", false, "if set the problems are shown in random order")
 	flag.Parse()
 
 	file, err := os.Open(*csvFilename)
@@ -31,20 +33,38 @@ func main() {
 	}
 
 	problems := parseLines(lines)
+	if *shuffle {
+		rand.Seed(time.Now().UnixNano())
+		rand.Shuffle(len(problems), func(i, j int) {
+			problems[i], problems[j] = problems[j], problems[i]
+		})
+	}
 
+	timer := time.NewTicker(time.Duration(*timeLimit) * time.Second)
 	correct := 0
+
+problemLoop:
 	for i, p := range problems {
 		fmt.Printf("Problem #%d: %s = \n", i+1, p.q)
 
-		var answer string
-		fmt.Scanf("%s\n", &answer) // trims the input
+		answerCH := make(chan string)
+		go func() {
+			var answer string
+			fmt.Scanf("%s\n", &answer) // trims the input
+			answerCH <- answer
+		}()
 
-		if answer == p.a {
-			correct++
+		select {
+		case <-timer.C:
+			break problemLoop
+		case answer := <-answerCH:
+			if answer == p.a {
+				correct++
+			}
 		}
 	}
 
-	fmt.Printf("Yous scored %d out of %d.\n", correct, len(problems))
+	fmt.Printf("\nYou scored %d out of %d.\n", correct, len(problems))
 }
 
 // parseLines does not use append() because we know the length of the slice we want.
